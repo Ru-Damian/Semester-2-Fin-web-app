@@ -1,8 +1,7 @@
 import streamlit as st
-from datetime import date, timedelta
 
 st.set_page_config(
-    page_title='MVP Dashboard ЦБ РФ',
+    page_title='Fin-web-app',
     layout='wide'
 )
 
@@ -43,7 +42,7 @@ REST_MVP_INDICATORS = [
 
 st.title('Веб-приложение для финансовых аналитиков')
 
-st.markdown("### Полезные ссылки")
+st.markdown("### Источники ЦБ")
 link_col1, link_col2 = st.columns(2)
 
 with link_col1:
@@ -55,7 +54,43 @@ with link_col2:
     st.page_link("https://www.cbr.ru/dataservice/swagger", label="Swagger ЦБ РФ")
     st.page_link("https://github.com/mbk-dev/cbrapi", label="Библиотека cbrapi (GitHub)")
     st.page_link("https://www.cbr.ru/DailyInfoWebServ/DailyInfo.asmx?op=KeyRateXML", label="SOAP документация KeyRateXML")
-    st.page_link("http://127.0.0.1:8000/docs", label="Локальная документация FastAPI (M2)")
+
+
+st.markdown("### Локальные ссылки FastAPI")
+
+local_col1, local_col2 = st.columns(2)
+
+with local_col1:
+    st.page_link(
+        "http://127.0.0.1:8000/docs",
+        label="Докальная документация FastAPI (M2)",
+        
+    )
+    st.page_link(
+        "http://127.0.0.1:8000/m2/2024/2025",
+        label="Сырой JSON M2 (2024–2025)",
+        
+    )
+    st.page_link(
+        "http://127.0.0.1:8000/m2-short/2024/2025",
+        label="Короткий ответ M2 (2024–2025)",
+    )
+
+with local_col2:
+    st.page_link(
+        "http://127.0.0.1:8000/m2-table-preview/2024/2025",
+        label="Предпросмотр таблицы M2 как стала DataFrame (2024–2025)",
+    )
+    st.page_link(
+        "http://127.0.0.1:8000/m2-clean-table/2024/2025",
+        label="Очищенная таблица M2 до БД(2024–2025)",
+    
+    )
+    st.page_link(
+        "http://127.0.0.1:8000/m2-from-db",
+        label="M2 из локальной БД",
+    )
+
 
 st.divider()
 
