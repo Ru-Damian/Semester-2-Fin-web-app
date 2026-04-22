@@ -3,14 +3,14 @@
 """
 
 from psycopg2.extras import RealDictCursor
-import math
+import numpy as np
 
 from src.db.connection import get_connection
 
 
 def _clean_value(value):
     """
-    Очистить значение от NaN.
+    Обработать разные случаи пропусков.
     
     :param value: значение из SELECT-запроса
     :type value: any
@@ -19,13 +19,25 @@ def _clean_value(value):
     """
     if value is None:
         return None
+    
+    # Проверка на float NaN и Inf
     if isinstance(value, float):
-        s = str(value)
-        try:
-            if math.isnan(value) or math.isinf(value):
-                return None
-        except:
+        if np.isnan(value) or np.isinf(value):
             return None
+    
+    # Проверка на Decimal NaN
+    if hasattr(value, 'is_nan') and callable(value.is_nan):
+        if value.is_nan():
+            return None
+    
+    # Проверка на float завернутый в string
+    try:
+        float_val = float(value)
+        if np.isnan(float_val) or np.isinf(float_val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    
     return value
 
 
