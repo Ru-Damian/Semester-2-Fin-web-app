@@ -9,6 +9,8 @@
 import pandas as pd
 import requests
 
+PUBLICATION_ID = 5
+DATASET_ID = 7
 
 def load_cbr_data(y1: int, y2: int) -> dict:
     """
@@ -26,10 +28,10 @@ def load_cbr_data(y1: int, y2: int) -> dict:
         params={
             "y1": y1,
             "y2": y2,
-            "publicationId": 5,
-            "datasetId": 7,
+            "publicationId": PUBLICATION_ID,
+            "datasetId": DATASET_ID
         },
-        timeout=10,
+        timeout=10
     )
     response.raise_for_status()
     return response.json()
@@ -63,7 +65,7 @@ def build_m2_clean_table(y1: int, y2: int) -> tuple[dict, pd.DataFrame, pd.DataF
         index="date",
         columns="indicator_name",
         values="obs_val",
-        aggfunc="first",
+        aggfunc="first"
     ).reset_index()
 
     wide_df = wide_df.rename(
@@ -72,7 +74,7 @@ def build_m2_clean_table(y1: int, y2: int) -> tuple[dict, pd.DataFrame, pd.DataF
             "Денежный агрегат М1": "m1",
             "Другие депозиты домашних хозяйств": "other_deposits_households",
             "Другие депозиты других финансовых организаций": "other_deposits_fin_org",
-            "Другие депозиты нефинансовых организаций": "other_deposits_nonfin_org",
+            "Другие депозиты нефинансовых организаций": "other_deposits_nonfin_org"
         }
     )
 

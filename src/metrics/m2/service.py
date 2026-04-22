@@ -53,7 +53,7 @@ def save_m2_clean_table_to_db(y1: int, y2: int, table_name: str = "m2_clean") ->
                 row["m1"],
                 row["other_deposits_households"],
                 row["other_deposits_fin_org"],
-                row["other_deposits_nonfin_org"],
+                row["other_deposits_nonfin_org"]
             )
             for _, row in wide_df.iterrows()
         ]
@@ -70,7 +70,7 @@ def save_m2_clean_table_to_db(y1: int, y2: int, table_name: str = "m2_clean") ->
                 other_deposits_nonfin_org
             ) VALUES %s
             """,
-            rows,
+            rows
         )
 
         conn.commit()

@@ -17,7 +17,7 @@ from src.metrics.m2.service import save_m2_clean_table_to_db
 
 router = APIRouter(
     prefix="/m2",
-    tags=["M2"],
+    tags=["M2"]
 )
 
 
@@ -28,12 +28,12 @@ def get_m2_from_db():
         rows = read_m2_clean_table()
         return {
             "row_count": len(rows),
-            "data": rows,
+            "data": rows
         }
     except Exception as e:
         return {
             "error_type": type(e).__name__,
-            "error_text": str(e),
+            "error_text": str(e)
         }
 
 
@@ -56,10 +56,10 @@ def rebuild_m2_table(y1: int, y2: int):
         return {
             "status": "ok",
             "rows_inserted": rows_inserted,
-            "message": f"Таблица m2_clean пересчитана за {y1}–{y2} гг.",
+            "message": f"Таблица m2_clean пересчитана за {y1}–{y2} гг."
         }
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Ошибка при пересборке таблицы M2: {type(e).__name__}: {e}",
+            detail=f"Ошибка при пересборке таблицы M2: {type(e).__name__}: {e}"
         )
