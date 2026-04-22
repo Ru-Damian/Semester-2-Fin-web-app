@@ -3,6 +3,7 @@
 """
 
 from psycopg2.extras import RealDictCursor
+import math
 
 from src.db.connection import get_connection
 
@@ -20,7 +21,10 @@ def _clean_value(value):
         return None
     if isinstance(value, float):
         s = str(value)
-        if s in ('nan', 'inf', '-inf', 'NaN'):
+        try:
+            if math.isnan(value) or math.isinf(value):
+                return None
+        except:
             return None
     return value
 

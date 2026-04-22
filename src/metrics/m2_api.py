@@ -53,7 +53,7 @@ def get_m2(y1: int, y2: int):
 
 @router.post("/rebuild/{y1}/{y2}")
 def rebuild_m2_table(y1: int, y2: int):
-    """Пересобрает таблицу m2_clean в БД за указанный период."""
+    """Пересобрает очищенную таблицу в БД за указанный период."""
     if y1 > y2:
         raise HTTPException(status_code=400, detail="Начальный год больше конечного.")
 
@@ -62,10 +62,10 @@ def rebuild_m2_table(y1: int, y2: int):
         return {
             "status": "ok",
             "rows_inserted": rows_inserted,
-            "message": f"Таблица m2_clean пересчитана за {y1}–{y2} гг."
+            "message": f"Таблица {DEFAULT_TABLE_NAME} пересчитана за {y1}–{y2} гг."
         }
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Ошибка при пересборке таблицы M2: {type(e).__name__}: {e}"
+            detail=f"Ошибка при пересборке таблицы {DEFAULT_TABLE_NAME}: {type(e).__name__}: {e}"
         )

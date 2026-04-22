@@ -52,7 +52,7 @@ def get_avg_exchange_rate(y1: int, y2: int):
 
 @router.post("/rebuild/{y1}/{y2}")
 def rebuild_avg_exchange_rate_table(y1: int, y2: int):
-    """Пересобрает таблицу m2_clean в БД за указанный период."""
+    """Пересобрает очищенную таблицу в БД за указанный период."""
     if y1 > y2:
         raise HTTPException(status_code=400, detail="Начальный год больше конечного.")
 
@@ -66,5 +66,5 @@ def rebuild_avg_exchange_rate_table(y1: int, y2: int):
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Ошибка при пересборке таблицы avg_exchange_rate: {type(e).__name__}: {e}"
+            detail=f"Ошибка при пересборке таблицы {DEFAULT_TABLE_NAME}: {type(e).__name__}: {e}"
         )

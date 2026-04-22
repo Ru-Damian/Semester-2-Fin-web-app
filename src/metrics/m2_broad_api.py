@@ -32,7 +32,7 @@ def get_m2_broad_from_db():
         rows = read_metric_clean_table(DEFAULT_TABLE_NAME)
         return {
             "row_count": len(rows),
-            "data": rows,
+            "data": rows
         }
     except Exception as e:
         return {
@@ -52,7 +52,7 @@ def get_m2_broad(y1: int, y2: int):
 
 @router.post("/rebuild/{y1}/{y2}")
 def rebuild_m2_broad_table(y1: int, y2: int):
-    """Пересобрает таблицу m2_clean в БД за указанный период."""
+    """Пересобрает очищенную таблицу в БД за указанный период."""
     if y1 > y2:
         raise HTTPException(status_code=400, detail="Начальный год больше конечного.")
 
@@ -66,5 +66,5 @@ def rebuild_m2_broad_table(y1: int, y2: int):
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Ошибка при пересборке таблицы m2_broad: {type(e).__name__}: {e}"
+            detail=f"Ошибка при пересборке таблицы {DEFAULT_TABLE_NAME}: {type(e).__name__}: {e}"
         )
