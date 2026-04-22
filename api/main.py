@@ -10,6 +10,7 @@ from src.metrics.m2_api import router as m2_router
 from src.metrics.m2_broad_api import router as m2_broad_router
 from src.metrics.exchange_rate_api import router as exchange_rate_router
 from src.metrics.avg_exchange_rate_api import router as avg_exchange_rate_router
+from src.metrics.m1_api import router as m1_router
 
 
 def create_app() -> FastAPI:
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
     app.include_router(m2_broad_router)
     app.include_router(exchange_rate_router)
     app.include_router(avg_exchange_rate_router)
+    app.include_router(m1_router)
 
     @app.get("/")
     def root():
