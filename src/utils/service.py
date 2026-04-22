@@ -11,7 +11,7 @@ from src.db.connection import get_connection
 from src.utils.table_builder import build_metric_clean_table
 
 
-def save_metric_clean_table_to_db(y1: int, y2: int, publication_id:int, dataset_id:int, table_name:str) -> int:
+def save_metric_clean_table_to_db(y1:int, y2:int, publication_id:int, dataset_id:int, table_name:str) -> int:
     """
     Сохраняет wide-таблицу метрики в PostgreSQL.
 

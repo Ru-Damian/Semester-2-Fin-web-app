@@ -16,7 +16,8 @@ from src.utils.service import save_metric_clean_table_to_db
 
 
 PUBLICATION_ID = 5
-DATASET_ID = 8
+DATASET_ID = 7
+DEFAULT_TABLE_NAME = "m2_clean"
 
 
 router = APIRouter(
@@ -29,7 +30,7 @@ router = APIRouter(
 def get_m2_from_db():
     """Читает очищенную таблицу M2 из PostgreSQL."""
     try:
-        rows = read_metric_clean_table()
+        rows = read_metric_clean_table(DEFAULT_TABLE_NAME)
         return {
             "row_count": len(rows),
             "data": rows
@@ -57,7 +58,7 @@ def rebuild_m2_table(y1: int, y2: int):
         raise HTTPException(status_code=400, detail="Начальный год больше конечного.")
 
     try:
-        rows_inserted = save_metric_clean_table_to_db(y1, y2)
+        rows_inserted = save_metric_clean_table_to_db(y1, y2, PUBLICATION_ID, DATASET_ID, DEFAULT_TABLE_NAME)
         return {
             "status": "ok",
             "rows_inserted": rows_inserted,
