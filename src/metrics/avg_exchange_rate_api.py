@@ -16,7 +16,7 @@ from src.utils.service import save_metric_clean_table_to_db
 
 
 PUBLICATION_ID = 33
-DATASET_ID = 127
+DATASET_ID = 128
 DEFAULT_TABLE_NAME = "avg_exchange_rate_clean"
 
 router = APIRouter(
