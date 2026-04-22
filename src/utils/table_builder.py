@@ -1,5 +1,5 @@
 """
-Модуль подготовки данных по метрике M2.
+Модуль подготовки данных по метрике.
 
 Содержит функции для:
 - загрузки сырых данных из API ЦБ РФ;
@@ -9,17 +9,19 @@
 import pandas as pd
 import requests
 
-PUBLICATION_ID = 5
-DATASET_ID = 7
 
-def load_cbr_data(y1: int, y2: int) -> dict:
+def load_cbr_data(y1: int, y2: int, publication_id:int, dataset_id:int) -> dict:
     """
-    Загружает сырой JSON по метрике M2 из API ЦБ РФ.
+    Загружает сырой JSON по метрике, заданной двумя индитификаторами, из API ЦБ РФ.
 
     :param y1: Начальный год периода
     :type y1: int
     :param y2: Конечный год периода
     :type y2: int
+    :param publication_id: Первый индитификатор метрики
+    :type publication_id: int
+    :param dataset_id: Второй индитификатор метрики
+    :type dataset_id: int
     :return: JSON-ответ API ЦБ РФ в виде словаря
     :rtype: dict
     """
@@ -28,8 +30,8 @@ def load_cbr_data(y1: int, y2: int) -> dict:
         params={
             "y1": y1,
             "y2": y2,
-            "publicationId": PUBLICATION_ID,
-            "datasetId": DATASET_ID
+            "publicationId": publication_id,
+            "datasetId": dataset_id
         },
         timeout=10
     )
@@ -37,20 +39,24 @@ def load_cbr_data(y1: int, y2: int) -> dict:
     return response.json()
 
 
-def build_m2_clean_table(y1: int, y2: int) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
+def build_metric_clean_table(y1: int, y2: int, publication_id:int, dataset_id:int) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
     """
-    Создает очищенную таблицу по метрике M2.
+    Создает очищенную таблицу по метрике.
 
     :param y1: Начальный год периода
     :type y1: int
     :param y2: Конечный год периода
     :type y2: int
+    :param publication_id: Первый индитификатор метрики
+    :type publication_id: int
+    :param dataset_id: Второй индитификатор метрики
+    :type dataset_id: int
     :return: Кортеж (исходный JSON-ответ API, 
                     long-таблица после первичной очистки,
-                    wide-таблица с основными колонками M2)
+                    wide-таблица с основными колонками метрики)
     :rtype: tuple[dict, pd.DataFrame, pd.DataFrame]
     """
-    data = load_cbr_data(y1, y2)
+    data = load_cbr_data(y1, y2, publication_id, dataset_id)
     df = pd.DataFrame(data["RawData"])
 
     header_map = {item["id"]: item["elname"] for item in data["headerData"]}
@@ -68,16 +74,13 @@ def build_m2_clean_table(y1: int, y2: int) -> tuple[dict, pd.DataFrame, pd.DataF
         aggfunc="first"
     ).reset_index()
 
-    wide_df = wide_df.rename(
-        columns={
-            "Всего": "total_m2",
-            "Денежный агрегат М1": "m1",
-            "Другие депозиты домашних хозяйств": "other_deposits_households",
-            "Другие депозиты других финансовых организаций": "other_deposits_fin_org",
-            "Другие депозиты нефинансовых организаций": "other_deposits_nonfin_org"
-        }
-    )
+    column_rename = {}
+    for col in wide_df.columns:
+        if col != "date":
+            col_lower = col.lower().replace(" ", "_").replace("(", "").replace(")", "")
+            column_rename[col] = col_lower
 
+    wide_df = wide_df.rename(columns=column_rename)
     wide_df = wide_df.sort_values("date").reset_index(drop=True)
 
     return data, df, wide_df

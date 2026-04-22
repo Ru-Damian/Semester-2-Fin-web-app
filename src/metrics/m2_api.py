@@ -10,9 +10,13 @@
 from fastapi import APIRouter, HTTPException
 import requests
 
-from src.metrics.m2.table_builder import load_cbr_data
-from src.metrics.m2.repository import read_m2_clean_table
-from src.metrics.m2.service import save_m2_clean_table_to_db
+from src.utils.table_builder import load_cbr_data
+from src.utils.repository import read_metric_clean_table
+from src.utils.service import save_metric_clean_table_to_db
+
+
+PUBLICATION_ID = 5
+DATASET_ID = 8
 
 
 router = APIRouter(
@@ -25,7 +29,7 @@ router = APIRouter(
 def get_m2_from_db():
     """Читает очищенную таблицу M2 из PostgreSQL."""
     try:
-        rows = read_m2_clean_table()
+        rows = read_metric_clean_table()
         return {
             "row_count": len(rows),
             "data": rows
@@ -41,9 +45,10 @@ def get_m2_from_db():
 def get_m2(y1: int, y2: int):
     """Загружает сырой JSON по M2 из API."""
     try:
-        return load_cbr_data(y1, y2)
+        return load_cbr_data(y1, y2, PUBLICATION_ID, DATASET_ID)
     except requests.RequestException as e:
         raise HTTPException(status_code=502, detail=f"Ошибка запроса к ЦБ: {e}")
+
 
 @router.post("/rebuild/{y1}/{y2}")
 def rebuild_m2_table(y1: int, y2: int):
@@ -52,7 +57,7 @@ def rebuild_m2_table(y1: int, y2: int):
         raise HTTPException(status_code=400, detail="Начальный год больше конечного.")
 
     try:
-        rows_inserted = save_m2_clean_table_to_db(y1, y2)
+        rows_inserted = save_metric_clean_table_to_db(y1, y2)
         return {
             "status": "ok",
             "rows_inserted": rows_inserted,
