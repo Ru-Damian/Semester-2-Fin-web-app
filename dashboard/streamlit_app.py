@@ -5,10 +5,12 @@ import streamlit as st
 from pathlib import Path
 from datetime import date, datetime
 from io import BytesIO
+import json
 
 from summary_service import build_summary
 
 API_BASE_URL = "http://127.0.0.1:8000"
+PRESETS_FILE = Path(__file__).resolve().parent / "presets.json"
 LOG_FILE = Path(__file__).resolve().parent / "app.log"
 TEST_API_ERROR = False  # True - включить тестовую ошибку API
 
@@ -241,20 +243,281 @@ def build_excel_file(dataframes: dict[str, pd.DataFrame]) -> bytes:
     return output.getvalue()
 
 
-if "start_year_saved" not in st.session_state:
-    st.session_state["start_year_saved"] = None
+def load_presets() -> dict:
+    """
+    Загружает сохраненные пресеты слотов из JSON файла.
 
-if "end_year_saved" not in st.session_state:
-    st.session_state["end_year_saved"] = None
+    :return: Словарь с данными пресетов
+    :rtype: dict
+    """
+    if not PRESETS_FILE.exists():
+        return {}
+
+    try:
+        with open(PRESETS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_presets(presets: dict):
+    """
+    Сохраняет словарь пресетов в JSON файл с форматированием.
+
+    :param presets: Словарь с данными пресетов для сохранения
+    :type presets: dict
+    :return: None
+    :rtype: None
+    """
+    with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+        json.dump(presets, f, ensure_ascii=False, indent=2)
+
+
+def get_slot_labels(presets: dict) -> dict:
+    """
+    Извлекает пользовательские названия слотов из словаря пресетов.
+
+    :param presets: Словарь с названиями пресетов
+    :type presets: dict
+    :return: Словарь с парами {номер_слота: название}
+    :rtype: dict
+    """
+    labels = presets.get("_slot_labels", {})
+    return labels if isinstance(labels, dict) else {}
+
+
+def save_current_slot_label():
+    """
+    Сохраняет пользовательское название для текущего выбранного слота.
+
+    Читает значение из session_state, обновляет словарь меток и сохраняет пресеты.
+    При пустом названии удаляет метку для слота.
+
+    :return: None
+    :rtype: None
+    """
+    presets = load_presets()
+    labels = get_slot_labels(presets)
+
+    slot = st.session_state["selected_slot"]
+    label = st.session_state.get("slot_custom_name", "").strip()
+
+    if label:
+        labels[slot] = label
+    else:
+        labels.pop(slot, None)
+
+    presets["_slot_labels"] = labels
+    save_presets(presets)
+    st.session_state["action_message"] = ("success", f"Название для слота {slot} сохранено.")
+
+
+def build_slot_payload(metric_endpoints: list[str], start_year: int, end_year: int) -> dict:
+    """
+    Формирует словарь с параметрами слота для сохранения в пресет.
+
+    :param metric_endpoints: Список эндпоинтов выбранных метрик
+    :type metric_endpoints: list[str]
+    :param start_year: Начальный год периода
+    :type start_year: int
+    :param end_year: Конечный год периода
+    :type end_year: int
+    :return: Словарь с параметрами слота
+    :rtype: dict
+    """
+    return {
+        "metric_endpoints": metric_endpoints,
+        "y1": start_year,
+        "y2": end_year
+    }
+
+
+def get_slot_status_text(slot_data: dict | None) -> str:
+    """
+    Формирует текстовое описание состояния слота с эмодзи.
+
+    :param slot_data: Данные слота (словарь) или None для пустого слота
+    :type slot_data: dict | None
+    :return: Текстовое описание состояния слота
+    :rtype: str
+    """
+    if not slot_data:
+        return "🟢 Слот свободен"
+
+    metric_count = len(slot_data.get("metric_endpoints", []))
+    y1 = slot_data.get("y1", "—")
+    y2 = slot_data.get("y2", "—")
+    return f"🔴 В слоте: {metric_count} метрики, {y1}–{y2}"
+
+
+def apply_pending_changes():
+    """
+    Применяет отложенные изменения к виджетам ДО их создания.
+    
+    :return: None
+    :rtype: None
+    """
+    
+    # Применяем метрики
+    pending_metrics = st.session_state.get("pending_metric_endpoints")
+    if pending_metrics is not None:
+        for item in REST_MVP_INDICATORS:
+            # Устанавливаем значения в session_state ДО создания виджетов
+            st.session_state[f"cb_{item['endpoint']}"] = item["endpoint"] in pending_metrics
+        st.session_state["pending_metric_endpoints"] = None
+    
+    # Применяем годы
+    pending_start = st.session_state.get("pending_start_year")
+    pending_end = st.session_state.get("pending_end_year")
+    
+    if pending_start is not None and pending_end is not None:
+        # Сначала применяем метрики, чтобы получить правильные границы
+        selected_metrics = get_selected_metrics()
+        min_possible_year, max_possible_year = get_year_bounds_for_selected_metrics(selected_metrics)
+        
+        # Корректируем годы
+        start_year = max(pending_start, min_possible_year)
+        end_year = min(pending_end, max_possible_year)
+        
+        st.session_state["start_year_widget"] = start_year
+        st.session_state["end_year_widget"] = end_year
+        
+        st.session_state["pending_start_year"] = None
+        st.session_state["pending_end_year"] = None
+    
+    # Загружаем данные, если нужно
+    if st.session_state.get("should_load_data", False):
+        # Очищаем старые данные
+        st.session_state["loaded_dataframes"] = {}
+        st.session_state["last_loaded_params"] = None
+        st.session_state["should_load_data"] = False
+        # Загружаем новые данные
+        load_data_for_selected_metrics()
+
+
+def on_save_slot():
+    """
+    Обработчик сохранения текущей конфигурации в выбранный слот.
+
+    Проверяет наличие выбранных метрик и корректность диапазона лет.
+    Если слот занят, устанавливает флаг для подтверждения перезаписи.
+    При успешном сохранении обновляет пресеты в JSON файле.
+
+    :return: None
+    :rtype: None
+    """
+    presets = load_presets()
+    selected_slot = st.session_state["selected_slot"]
+
+    metric_endpoints = get_selected_metric_endpoints()
+    start_year = st.session_state.get("start_year_widget")
+    end_year = st.session_state.get("end_year_widget")
+
+    if not metric_endpoints:
+        st.session_state["action_message"] = ("warning", "Сначала выберите хотя бы одну метрику.")
+        return
+
+    if start_year is None or end_year is None:
+        st.session_state["action_message"] = ("warning", "Сначала выберите диапазон лет.")
+        return
+
+    if start_year > end_year:
+        st.session_state["action_message"] = ("warning", "Год начала не может быть позже года конца.")
+        return
+
+    slot_is_occupied = presets.get(selected_slot) is not None
+    if slot_is_occupied:
+        st.session_state["overwrite_requested"] = True
+        st.session_state["target_slot_for_overwrite"] = selected_slot
+        return
+
+    presets[selected_slot] = build_slot_payload(metric_endpoints, start_year, end_year)
+    save_presets(presets)
+    st.session_state["action_message"] = ("success", f"Сохранено в слот {selected_slot}.")
+
+
+def on_confirm_overwrite():
+    """
+    Обработчик подтверждения перезаписи занятого слота.
+
+    Перезаписывает данные в указанном слоте новой конфигурацией.
+    Сбрасывает флаги состояния перезаписи после выполнения.
+
+    :return: None
+    :rtype: None
+    """
+    presets = load_presets()
+    target_slot = st.session_state.get("target_slot_for_overwrite")
+
+    metric_endpoints = get_selected_metric_endpoints()
+    start_year = st.session_state.get("start_year_widget")
+    end_year = st.session_state.get("end_year_widget")
+
+    if not target_slot:
+        st.session_state["action_message"] = ("warning", "Слот для перезаписи не выбран.")
+        return
+
+    presets[target_slot] = build_slot_payload(metric_endpoints, start_year, end_year)
+    save_presets(presets)
+
+    st.session_state["overwrite_requested"] = False
+    st.session_state["target_slot_for_overwrite"] = None
+    st.session_state["action_message"] = ("success", f"Слот {target_slot} перезаписан.")
+
+
+def on_cancel_overwrite():
+    """
+    Обработчик отмены перезаписи занятого слота.
+
+    Сбрасывает флаги состояния перезаписи и очищает информацию о целевом слоте.
+
+    :return: None
+    :rtype: None
+    """
+    st.session_state["overwrite_requested"] = False
+    st.session_state["target_slot_for_overwrite"] = None
+    st.session_state["action_message"] = ("info", "Перезапись отменена.")
+
+
+def on_load_slot():
+    """
+    Обработчик загрузки конфигурации из выбранного слота.
+    Сохраняет данные в session_state и вызывает перезапуск.
+    """
+    presets = load_presets()
+    selected_slot = st.session_state["selected_slot"]
+    slot_data = presets.get(selected_slot)
+
+    if not slot_data:
+        st.session_state["action_message"] = ("warning", "Этот слот пуст.")
+        return
+
+    metric_endpoints = slot_data.get("metric_endpoints", [])
+    start_year = slot_data.get("y1")
+    end_year = slot_data.get("y2")
+    
+    st.session_state["pending_metric_endpoints"] = metric_endpoints
+    st.session_state["pending_start_year"] = start_year
+    st.session_state["pending_end_year"] = end_year
+    st.session_state["should_load_data"] = True
+    st.session_state["action_message"] = ("success", f"Слот {selected_slot} загружен.")
+
+
+if "pending_start_year" not in st.session_state:
+    st.session_state["pending_start_year"] = None
+
+if "pending_end_year" not in st.session_state:
+    st.session_state["pending_end_year"] = None
+
+if "should_load_data" not in st.session_state:
+    st.session_state["should_load_data"] = False
 
 if "overwrite_requested" not in st.session_state:
     st.session_state["overwrite_requested"] = False
 
 if "target_slot_for_overwrite" not in st.session_state:
     st.session_state["target_slot_for_overwrite"] = None
-
-if "pending_metric_endpoints" not in st.session_state:
-    st.session_state["pending_metric_endpoints"] = None
 
 if "action_message" not in st.session_state:
     st.session_state["action_message"] = None
@@ -271,11 +534,13 @@ if "loaded_dataframes" not in st.session_state:
 if "last_loaded_params" not in st.session_state:
     st.session_state["last_loaded_params"] = None
 
+apply_pending_changes()
 
 st.title("Выбранные параметры ЦБ РФ")
 
 with st.sidebar:
     st.header("Параметры")
+
     st.subheader("Метрики")
 
     message = st.session_state.get("action_message")
@@ -322,6 +587,77 @@ with st.sidebar:
 
     if st.button("Загрузить или обновить", type="primary"):
         load_data_for_selected_metrics()
+    
+        st.subheader("Мои конфигурации")
+
+    presets = load_presets()
+    slot_labels = get_slot_labels(presets)
+
+    slot_display_map = {}
+    slot_display_options = []
+
+    for i in range(1, 11):
+        slot = str(i)
+        label = slot_labels.get(slot, "").strip()
+        display_value = f"{slot} — {label}" if label else slot
+        slot_display_map[display_value] = slot
+        slot_display_options.append(display_value)
+
+    current_slot = st.session_state["selected_slot"]
+    current_label = slot_labels.get(current_slot, "").strip()
+    current_display_value = f"{current_slot} — {current_label}" if current_label else current_slot
+
+    selected_slot_display = st.selectbox(
+        "Слот конфигурации",
+        slot_display_options,
+        index=slot_display_options.index(current_display_value)
+    )
+
+    selected_slot = slot_display_map[selected_slot_display]
+
+    slot_changed = selected_slot != st.session_state["selected_slot"]
+    st.session_state["selected_slot"] = selected_slot
+
+    if slot_changed:
+        st.session_state["slot_custom_name"] = slot_labels.get(selected_slot, "")
+
+    current_slot_data = presets.get(st.session_state["selected_slot"])
+    st.markdown(get_slot_status_text(current_slot_data))
+
+    st.text_input(
+        "Название слота",
+        key="slot_custom_name",
+        placeholder="Например: Курсы и M2"
+    )
+
+    if st.button("Сохранить название"):
+        save_current_slot_label()
+
+    col_slot_1, col_slot_2 = st.columns(2)
+    with col_slot_1:
+        if st.button("Сохранить"):
+            on_save_slot()
+    with col_slot_2:
+        if st.button("Загрузить"):
+            on_load_slot()
+
+    if st.session_state.get("overwrite_requested", False):
+        target_slot = st.session_state["target_slot_for_overwrite"]
+        st.warning(f"⚠️ Слот {target_slot} уже содержит данные. Перезаписать?")
+        col_yes, col_no = st.columns(2)
+
+        with col_yes:
+            st.button(
+                "✅ Да, перезаписать",
+                key="btn_confirm_overwrite",
+                on_click=on_confirm_overwrite,
+            )
+        with col_no:
+            st.button(
+                "❌ Отмена",
+                key="btn_cancel_overwrite",
+                on_click=on_cancel_overwrite,
+            )
 
 
 selected_metrics = get_selected_metrics()
