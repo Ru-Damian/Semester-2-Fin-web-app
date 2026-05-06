@@ -5,6 +5,8 @@ import streamlit as st
 from pathlib import Path
 from datetime import date, datetime
 
+from summary_service import build_summary
+
 API_BASE_URL = "http://127.0.0.1:8000"
 LOG_FILE = Path(__file__).resolve().parent / "app.log"
 TEST_API_ERROR = False  # True - включить тестовую ошибку API
@@ -295,3 +297,7 @@ else:
                     display_df["date"] = pd.to_datetime(display_df["date"]).dt.strftime("%Y-%m-%d")
                 display_df = display_df.rename(columns=processing_column_name)
                 st.dataframe(display_df, width="stretch")
+    
+    st.subheader("Сводка")
+    for metric_name, df in loaded_dataframes.items():
+        st.write("- " + build_summary(metric_name, df))
