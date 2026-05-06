@@ -4,6 +4,7 @@ import streamlit as st
 
 from pathlib import Path
 from datetime import date, datetime
+from io import BytesIO
 
 from summary_service import build_summary
 
@@ -26,14 +27,27 @@ REST_MVP_INDICATORS = [
 
 
 def processing_column_name(col: str) -> str:
-    """Преобразование названия колонки в читаемый формат"""
+    """
+    Преобразовывает название столбца в "чистый" формат для пользователя.
+    Меняет "_" на пробел, делает первую букву заглавной и переводит название с английского языка на русский.
+
+    :param col: Название столбца
+    :type col: str
+    :return: Чистое название столбца
+    :rtype: str
+    """
     if col == "date":
         col = "Дата"
     return col.replace("_", " ").title()
 
 
 def get_selected_metric_endpoints() -> list[str]:
-    """Получение выбранных метрик"""
+    """
+    Получает список эндпоинтов выбранных метрик из состояния сессии.
+
+    :return: Список эндпоинтов выбранных метрик
+    :rtype: list[str]
+    """
     result = []
     for item in REST_MVP_INDICATORS:
         if st.session_state.get(f"cb_{item['endpoint']}", False):
@@ -42,20 +56,35 @@ def get_selected_metric_endpoints() -> list[str]:
 
 
 def get_selected_metrics() -> list[dict]:
-    """Получение выбранных метрик"""
+    """
+    Получает полные словари выбранных метрик.
+
+    :return: Список словарей с данными выбранных метрик
+    :rtype: list[dict]
+    """
     selected_endpoints = set(get_selected_metric_endpoints())
     return [item for item in REST_MVP_INDICATORS if item["endpoint"] in selected_endpoints]
 
 
 def get_year_bounds_for_selected_metrics(selected_metrics: list[dict]) -> tuple[int, int]:
-    """Получение границ для выбранных метрик"""
+    """
+    Определяет минимально возможный год начала для выбранных метрик.
+
+    :param selected_metrics: Список выбранных метрик с полями min_year
+    :type selected_metrics: list[dict]
+    :return: Кортеж (минимальный год начала, текущий год)
+    :rtype: tuple[int, int]
+    """
     if not selected_metrics:
         return 2015, date.today().year
     return max(item["min_year"] for item in selected_metrics), date.today().year
 
 
 def sync_year_widgets_with_bounds():
-    """Синхронизация годов в виджетах"""
+    """
+    Создает список годов для виджета на боковой панели.
+    Если текущие значения годов выходят за допустимые пределы, автоматически корректирует их.
+    """
     selected_metrics = get_selected_metrics()
     min_possible_year, max_possible_year = get_year_bounds_for_selected_metrics(selected_metrics)
     years = list(range(min_possible_year, max_possible_year + 1))
@@ -70,7 +99,20 @@ def sync_year_widgets_with_bounds():
 
 
 def write_error_log(metric_name: str, y1: int, y2: int, error_text: str) -> None:
-    """Запись ошибки в лог"""
+    """
+    Записывает информацию об ошибке загрузки метрики в лог-файл.
+
+    :param metric_name: Название метрики, при загрузке которой произошла ошибка
+    :type metric_name: str
+    :param y1: Начальный год периода
+    :type y1: int
+    :param y2: Конечный год периода
+    :type y2: int
+    :param error_text: Текст ошибки
+    :type error_text: str
+    :return: None
+    :rtype: None
+    """
     timestamp = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
     log_line = f"[{timestamp}] metric={metric_name} | period={y1}-{y2} | error={error_text}\n"
 
@@ -79,7 +121,15 @@ def write_error_log(metric_name: str, y1: int, y2: int, error_text: str) -> None
 
 
 def load_data_for_selected_metrics():
-    """Загрузка данных для выбранных метрик"""
+    """
+    Загружает данные для выбранных метрик за указанный период из API.
+
+    Выполняет POST запросы для загрузки данных, затем GET запросы для их получения.
+    Результаты сохраняются в session_state (loaded_dataframes, last_loaded_params).
+
+    :return: None
+    :rtype: None
+    """
     selected_metrics = get_selected_metrics()
     start_year = st.session_state.get("start_year_widget")
     end_year = st.session_state.get("end_year_widget")
@@ -147,6 +197,48 @@ def load_data_for_selected_metrics():
         "results": results,
         "total_rows_for_export": total_rows_for_export,
     }
+
+
+def build_csv_file(dataframes: dict[str, pd.DataFrame]) -> bytes:
+    """
+    Сохраняет все выбранные метрики в CSV файл.
+
+    :param dataframes: Словарь с парами {"название метрики": DataFrame}
+    :type dataframes: dict[str, pd.DataFrame]
+    :return: Байтовое представление CSV файла
+    :rtype: bytes
+    """
+    combined_parts = []
+    for sheet_name, df in dataframes.items():
+        export_df = df.copy()
+        if "date" in export_df.columns:
+            export_df["date"] = pd.to_datetime(export_df["date"]).dt.strftime("%Y-%m-%d")
+        export_df = export_df.rename(columns=processing_column_name)
+        combined_parts.append(f"### {sheet_name}")
+        combined_parts.append(export_df.to_csv(index=False))
+        combined_parts.append("")
+    return "\n".join(combined_parts).encode("utf-8-sig")
+
+
+def build_excel_file(dataframes: dict[str, pd.DataFrame]) -> bytes:
+    """
+    Сохраняет все выбранные метрики в Excel файл.
+
+    :param dataframes: Словарь с парами {"название метрики": DataFrame}
+    :type dataframes: dict[str, pd.DataFrame]
+    :return: Байтовое представление Excel файла
+    :rtype: bytes
+    """
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        for sheet_name, df in dataframes.items():
+            export_df = df.copy()
+            if "date" in export_df.columns:
+                export_df["date"] = pd.to_datetime(export_df["date"]).dt.strftime("%Y-%m-%d")
+            export_df = export_df.rename(columns=processing_column_name)
+            safe_sheet_name = sheet_name[:31]
+            export_df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
+    return output.getvalue()
 
 
 if "start_year_saved" not in st.session_state:
@@ -298,6 +390,31 @@ else:
                 display_df = display_df.rename(columns=processing_column_name)
                 st.dataframe(display_df, width="stretch")
     
-    st.subheader("Сводка")
-    for metric_name, df in loaded_dataframes.items():
-        st.write("- " + build_summary(metric_name, df))
+    if loaded_dataframes:
+        st.subheader("Сводка")
+        for metric_name, df in loaded_dataframes.items():
+            st.write("- " + build_summary(metric_name, df))
+        
+        if total_rows_for_export > 15000:
+            st.warning("Слишком большой размер выгрузки. Ограничьте период или уменьшите количество показателей.")
+        else:
+            csv_bytes = build_csv_file(loaded_dataframes)
+            excel_bytes = build_excel_file(loaded_dataframes)
+
+            col1, col2, _ = st.columns([1, 1, 10])
+            with col1:
+                st.download_button(
+                    label="Экспорт в CSV",
+                    data=csv_bytes,
+                    file_name=f"cbrf_export_{y1}_{y2}.csv",
+                    mime="text/csv",
+                    on_click="ignore"
+                )
+            with col2:
+                st.download_button(
+                    label="Экспорт в Excel",
+                    data=excel_bytes,
+                    file_name=f"cbrf_export_{y1}_{y2}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    on_click="ignore"
+                )
