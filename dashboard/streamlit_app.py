@@ -13,6 +13,7 @@ API_BASE_URL = "http://127.0.0.1:8000"
 PRESETS_FILE = Path(__file__).resolve().parent / "presets.json"
 LOG_FILE = Path(__file__).resolve().parent / "app.log"
 TEST_API_ERROR = False  # True - включить тестовую ошибку API
+TEST_UPLOAD_ERROR = True  # True - включить тестовую ошибку загрузки
 
 st.set_page_config(
     page_title="Fin Web App",
@@ -87,6 +88,9 @@ def sync_year_widgets_with_bounds():
     Создает список годов для виджета на боковой панели.
     Если текущие значения годов выходят за допустимые пределы, автоматически корректирует их.
     """
+    if st.session_state.get("_skip_sync", False):
+        st.session_state["_skip_sync"] = False
+        return
     selected_metrics = get_selected_metrics()
     min_possible_year, max_possible_year = get_year_bounds_for_selected_metrics(selected_metrics)
     years = list(range(min_possible_year, max_possible_year + 1))
@@ -354,45 +358,37 @@ def get_slot_status_text(slot_data: dict | None) -> str:
 def apply_pending_changes():
     """
     Применяет отложенные изменения к виджетам ДО их создания.
-    
+
     :return: None
     :rtype: None
     """
-    
-    # Применяем метрики
+
     pending_metrics = st.session_state.get("pending_metric_endpoints")
     if pending_metrics is not None:
         for item in REST_MVP_INDICATORS:
-            # Устанавливаем значения в session_state ДО создания виджетов
             st.session_state[f"cb_{item['endpoint']}"] = item["endpoint"] in pending_metrics
         st.session_state["pending_metric_endpoints"] = None
-    
-    # Применяем годы
+
     pending_start = st.session_state.get("pending_start_year")
     pending_end = st.session_state.get("pending_end_year")
-    
+
     if pending_start is not None and pending_end is not None:
-        # Сначала применяем метрики, чтобы получить правильные границы
         selected_metrics = get_selected_metrics()
         min_possible_year, max_possible_year = get_year_bounds_for_selected_metrics(selected_metrics)
-        
-        # Корректируем годы
+
         start_year = max(pending_start, min_possible_year)
         end_year = min(pending_end, max_possible_year)
-        
+
         st.session_state["start_year_widget"] = start_year
         st.session_state["end_year_widget"] = end_year
-        
+
         st.session_state["pending_start_year"] = None
         st.session_state["pending_end_year"] = None
-    
-    # Загружаем данные, если нужно
+
     if st.session_state.get("should_load_data", False):
-        # Очищаем старые данные
         st.session_state["loaded_dataframes"] = {}
         st.session_state["last_loaded_params"] = None
         st.session_state["should_load_data"] = False
-        # Загружаем новые данные
         load_data_for_selected_metrics()
 
 
@@ -496,12 +492,15 @@ def on_load_slot():
     metric_endpoints = slot_data.get("metric_endpoints", [])
     start_year = slot_data.get("y1")
     end_year = slot_data.get("y2")
-    
+
     st.session_state["pending_metric_endpoints"] = metric_endpoints
     st.session_state["pending_start_year"] = start_year
     st.session_state["pending_end_year"] = end_year
     st.session_state["should_load_data"] = True
+    st.session_state["_skip_sync"] = True
     st.session_state["action_message"] = ("success", f"Слот {selected_slot} загружен.")
+
+    st.rerun()
 
 
 if "pending_start_year" not in st.session_state:
@@ -534,6 +533,9 @@ if "loaded_dataframes" not in st.session_state:
 if "last_loaded_params" not in st.session_state:
     st.session_state["last_loaded_params"] = None
 
+if "_skip_sync" not in st.session_state:
+    st.session_state["_skip_sync"] = False
+
 apply_pending_changes()
 
 st.title("Выбранные параметры ЦБ РФ")
@@ -555,7 +557,7 @@ with st.sidebar:
         elif level == "error":
             st.error(text)
         st.session_state["action_message"] = None
-    
+
     for item in REST_MVP_INDICATORS:
         st.checkbox(item["name"], key=f"cb_{item['endpoint']}")
 
@@ -587,8 +589,8 @@ with st.sidebar:
 
     if st.button("Загрузить или обновить", type="primary"):
         load_data_for_selected_metrics()
-    
-        st.subheader("Мои конфигурации")
+
+    st.subheader("Мои конфигурации")
 
     presets = load_presets()
     slot_labels = get_slot_labels(presets)
@@ -630,7 +632,7 @@ with st.sidebar:
         placeholder="Например: Курсы и M2"
     )
 
-    if st.button("Сохранить название"):
+    if st.button("Переименовать слот"):
         save_current_slot_label()
 
     col_slot_1, col_slot_2 = st.columns(2)
@@ -725,14 +727,14 @@ else:
                     display_df["date"] = pd.to_datetime(display_df["date"]).dt.strftime("%Y-%m-%d")
                 display_df = display_df.rename(columns=processing_column_name)
                 st.dataframe(display_df, width="stretch")
-    
+
     if loaded_dataframes:
         st.subheader("Сводка")
         for metric_name, df in loaded_dataframes.items():
             st.write("- " + build_summary(metric_name, df))
-        
-        if total_rows_for_export > 15000:
-            st.warning("Слишком большой размер выгрузки. Ограничьте период или уменьшите количество показателей.")
+
+        if total_rows_for_export > 15000 or TEST_UPLOAD_ERROR:
+            st.warning("Скачивание недоступно. Слишком большой размер выгрузки. Ограничьте период или уменьшите количество показателей.")
         else:
             csv_bytes = build_csv_file(loaded_dataframes)
             excel_bytes = build_excel_file(loaded_dataframes)
